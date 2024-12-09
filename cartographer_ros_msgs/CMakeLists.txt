@@ -49,6 +49,7 @@ add_service_files(
     ReadMetrics.srv
     StartTrajectory.srv
     SubmapQuery.srv
+    SwitchTrajectory.srv
     TrajectoryQuery.srv
     WriteState.srv
 )

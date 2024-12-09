@@ -17,10 +17,12 @@
 #include "absl/memory/memory.h"
 #include "cartographer/mapping/map_builder.h"
 #include "cartographer_ros/node.h"
+#include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros/node_options.h"
 #include "cartographer_ros/ros_log_sink.h"
 #include "gflags/gflags.h"
 #include "tf2_ros/transform_listener.h"
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 
 DEFINE_bool(collect_metrics, false,
             "Activates the collection of runtime metrics. If activated, the "
@@ -44,45 +46,64 @@ DEFINE_string(
     save_state_filename, "",
     "If non-empty, serialize state and write it to disk before shutting down.");
 
-namespace cartographer_ros {
-namespace {
+namespace cartographer_ros
+{
+  namespace
+  {
+    std::string getFileName(const std::string &path)
+    {
+      int lastSlashPos = path.find_last_of("/");
+      std::string fileNameWithExt = path.substr(lastSlashPos + 1);
+      int lastDotPos = fileNameWithExt.find_last_of(".");
+      return fileNameWithExt.substr(0, lastDotPos);
+    }
 
-void Run() {
-  constexpr double kTfBufferCacheTimeInSeconds = 10.;
-  tf2_ros::Buffer tf_buffer{::ros::Duration(kTfBufferCacheTimeInSeconds)};
-  tf2_ros::TransformListener tf(tf_buffer);
-  NodeOptions node_options;
-  TrajectoryOptions trajectory_options;
-  std::tie(node_options, trajectory_options) =
-      LoadOptions(FLAGS_configuration_directory, FLAGS_configuration_basename);
+    void Run()
+    {
+      constexpr double kTfBufferCacheTimeInSeconds = 10.;
+      tf2_ros::Buffer tf_buffer{::ros::Duration(kTfBufferCacheTimeInSeconds)};
+      tf2_ros::TransformListener tf(tf_buffer);
+      NodeOptions node_options;
+      TrajectoryOptions trajectory_options;
+      std::tie(node_options, trajectory_options) =
+          LoadOptions(FLAGS_configuration_directory, FLAGS_configuration_basename);
 
-  auto map_builder =
-      cartographer::mapping::CreateMapBuilder(node_options.map_builder_options);
-  Node node(node_options, std::move(map_builder), &tf_buffer,
-            FLAGS_collect_metrics);
-  if (!FLAGS_load_state_filename.empty()) {
-    node.LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
-  }
+      auto map_builder =
+          cartographer::mapping::CreateMapBuilder(node_options.map_builder_options);
+      Node node(node_options, std::move(map_builder), &tf_buffer,
+                FLAGS_collect_metrics);
+      node.configuration_directory_ = FLAGS_configuration_directory;
+      node.configuration_basename_ = FLAGS_configuration_basename;
 
-  if (FLAGS_start_trajectory_with_default_topics) {
-    node.StartTrajectoryWithDefaultTopics(trajectory_options);
-  }
+      if (!FLAGS_load_state_filename.empty())
+      {
+        node.LoadState(FLAGS_load_state_filename, FLAGS_load_frozen_state);
+        node.pbstreams_.push_back({getFileName(FLAGS_load_state_filename), 0});
+        node.pure_localization_ = true;
+      }
 
-  ::ros::spin();
+      if (FLAGS_start_trajectory_with_default_topics)
+      {
+        node.StartTrajectoryWithDefaultTopics(trajectory_options);
+      }
 
-  node.FinishAllTrajectories();
-  node.RunFinalOptimization();
+      ::ros::spin();
 
-  if (!FLAGS_save_state_filename.empty()) {
-    node.SerializeState(FLAGS_save_state_filename,
-                        true /* include_unfinished_submaps */);
-  }
-}
+      node.FinishAllTrajectories();
+      node.RunFinalOptimization();
 
-}  // namespace
-}  // namespace cartographer_ros
+      if (!FLAGS_save_state_filename.empty())
+      {
+        node.SerializeState(FLAGS_save_state_filename,
+                            true /* include_unfinished_submaps */);
+      }
+    }
 
-int main(int argc, char** argv) {
+  } // namespace
+} // namespace cartographer_ros
+
+int main(int argc, char **argv)
+{
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
